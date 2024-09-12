@@ -1,6 +1,6 @@
 'use strict';
 
-// https://webmachinelearning.github.io/webnn/#enumdef-mloperanddatatype
+// https://www.w3.org/TR/webnn/#enumdef-mloperanddatatype
 const allWebNNOperandDataTypes = [
   'float32',
   'float16',
@@ -11,6 +11,16 @@ const allWebNNOperandDataTypes = [
   'int8',
   'uint8'
 ];
+
+// https://webidl.spec.whatwg.org/#idl-unsigned-long
+// The unsigned long type is an unsigned integer type that has values in the
+// range [0, 4294967295].
+// 4294967295 = 2 ** 32 - 1
+const kMaxUnsignedLong = 2 ** 32 - 1;
+
+const floatingPointTypes = ['float32', 'float16'];
+
+const signedIntegerTypes = ['int32', 'int64', 'int8'];
 
 const unsignedLongType = 'unsigned long';
 
@@ -173,9 +183,7 @@ function generateOutOfRangeValuesArray(type) {
   let range, outsideValueArray;
   switch (type) {
     case 'unsigned long':
-      // https://webidl.spec.whatwg.org/#idl-unsigned-long
-      // The unsigned long type is an unsigned integer type that has values in the range [0, 4294967295].
-      range = [0, 4294967295];
+      range = [0, kMaxUnsignedLong];
       break;
     default:
       throw new Error(`Unsupport ${type}`);
@@ -187,7 +195,7 @@ function generateOutOfRangeValuesArray(type) {
 let inputIndex = 0;
 let inputAIndex = 0;
 let inputBIndex = 0;
-let context, builder;
+let context;
 
 test(() => assert_not_equals(navigator.ml, undefined, "ml property is defined on navigator"));
 
@@ -195,32 +203,56 @@ promise_setup(async () => {
   if (navigator.ml === undefined) {
     return;
   }
-  context = await navigator.ml.createContext();
-  builder = new MLGraphBuilder(context);
+  const deviceType = location.search.substring(1);
+  context = await navigator.ml.createContext({deviceType: deviceType});
 }, {explicit_timeout: true});
 
-function validateTwoInputsBroadcastable(operationName) {
+function assert_throws_with_label(func, regrexp) {
+  try {
+    func.call(this);
+    assert_true(false, 'Graph builder method unexpectedly succeeded');
+  } catch (e) {
+    assert_equals(e.name, 'TypeError');
+    const error_message = e.message;
+    assert_not_equals(error_message.match(regrexp), null);
+  }
+}
+
+function validateTwoInputsBroadcastable(operationName, label) {
   if (navigator.ml === undefined) {
     return;
   }
   promise_test(async t => {
+    const builder = new MLGraphBuilder(context);
     for (let dataType of allWebNNOperandDataTypes) {
+      if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+        assert_throws_js(
+            TypeError,
+            () => builder.input(
+                `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+        continue;
+      }
       for (let dimensions of allWebNNDimensionsArray) {
         if (dimensions.length > 0) {
           const inputA = builder.input(`inputA${++inputAIndex}`, {dataType, dimensions});
           const unbroadcastableDimensionsArray = generateUnbroadcastableDimensionsArray(dimensions);
           for (let unbroadcastableDimensions of unbroadcastableDimensionsArray) {
             const inputB = builder.input(`inputB${++inputBIndex}`, {dataType, dimensions: unbroadcastableDimensions});
-            assert_throws_dom('DataError', () => builder[operationName](inputA, inputB));
-            assert_throws_dom('DataError', () => builder[operationName](inputB, inputA));
+            assert_equals(typeof builder[operationName], 'function');
+            const options = {label};
+            const regrexp = new RegExp('\\[' + label + '\\]');
+            assert_throws_with_label(
+                () => builder[operationName](inputA, inputB, options), regrexp);
+            assert_throws_with_label(
+                () => builder[operationName](inputB, inputA, options), regrexp);
           }
         }
       }
     }
-  }, `[${operationName}] DataError is expected if two inputs aren't broadcastable`);
+  }, `[${operationName}] TypeError is expected if two inputs aren't broadcastable`);
 }
 
-function validateTwoInputsOfSameDataType(operationName) {
+function validateTwoInputsOfSameDataType(operationName, label) {
   if (navigator.ml === undefined) {
     return;
   }
@@ -234,28 +266,49 @@ function validateTwoInputsOfSameDataType(operationName) {
   }
   for (let subOperationName of operationNameArray) {
     promise_test(async t => {
+      const builder = new MLGraphBuilder(context);
       for (let dataType of allWebNNOperandDataTypes) {
+        if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+          assert_throws_js(
+              TypeError,
+              () => builder.input(
+                  `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+          continue;
+        }
         for (let dimensions of allWebNNDimensionsArray) {
           const inputA = builder.input(`inputA${++inputAIndex}`, {dataType, dimensions});
           for (let dataTypeB of allWebNNOperandDataTypes) {
+            if (!context.opSupportLimits().input.dataTypes.includes(
+                    dataTypeB)) {
+              assert_throws_js(
+                  TypeError,
+                  () => builder.input(
+                      `inputB${++inputBIndex}`, {dataTypeB, dimensions1D}));
+              continue;
+            }
             if (dataType !== dataTypeB) {
               const inputB = builder.input(`inputB${++inputBIndex}`, {dataType: dataTypeB, dimensions});
-              assert_throws_dom('DataError', () => builder[subOperationName](inputA, inputB));
+              const options = {label};
+              const regrexp = new RegExp('\\[' + label + '\\]');
+              assert_equals(typeof builder[subOperationName], 'function');
+              assert_throws_with_label(
+                  () => builder[subOperationName](inputA, inputB, options),
+                  regrexp);
             }
           }
         }
       }
-    }, `[${subOperationName}] DataError is expected if two inputs aren't of same data type`);
+    }, `[${subOperationName}] TypeError is expected if two inputs aren't of same data type`);
   }
 }
 
 /**
  * Validate options.axes by given operation and input rank for
- * argMin/Max / layerNormalization / Reduction operations / resample2d operations
- * @param {(String[]|String)} operationName - An operation name array or an operation name
- * @param {Number} [inputRank]
+ * argMin/Max / layerNormalization / Reduction operations operations
+ * @param {(String[]|String)} operationName - An operation name array or an
+ *     operation name
  */
-function validateOptionsAxes(operationName, inputRank) {
+function validateOptionsAxes(operationName) {
   if (navigator.ml === undefined) {
     return;
   }
@@ -271,89 +324,255 @@ function validateOptionsAxes(operationName, inputRank) {
   for (let subOperationName of operationNameArray) {
     // TypeError is expected if any of options.axes elements is not an unsigned long interger
     promise_test(async t => {
-      if (inputRank === undefined) {
-        // argMin/Max / layerNormalization / Reduction operations
-        for (let dataType of allWebNNOperandDataTypes) {
-          for (let dimensions of allWebNNDimensionsArray) {
-            const rank = getRank(dimensions);
-            if (rank >= 1) {
-              const input = builder.input(`input${++inputIndex}`, {dataType, dimensions});
-              for (let invalidAxis of invalidAxisArray) {
-                assert_throws_js(TypeError, () => builder[subOperationName](input, {axes: invalidAxis}));
-              }
-              for (let axis of notUnsignedLongAxisArray) {
-                assert_false(typeof axis === 'number' && Number.isInteger(axis), `[${subOperationName}] any of options.axes elements should be of 'unsigned long'`);
-                assert_throws_js(TypeError, () => builder[subOperationName](input, {axes: [axis]}));
-              }
-            }
-          }
+      const builder = new MLGraphBuilder(context);
+      for (let dataType of allWebNNOperandDataTypes) {
+        if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+          assert_throws_js(
+              TypeError,
+              () => builder.input(
+                  `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+          continue;
         }
-      } else {
-        // resample2d
-        for (let dataType of allWebNNOperandDataTypes) {
-          const input = builder.input(`input${++inputIndex}`, {dataType, dimensions: allWebNNDimensionsArray[inputRank]});
-          for (let invalidAxis of invalidAxisArray) {
-            assert_throws_js(TypeError, () => builder[subOperationName](input, {axes: invalidAxis}));
-          }
-          for (let axis of notUnsignedLongAxisArray) {
-            assert_false(typeof axis === 'number' && Number.isInteger(axis), `[${subOperationName}]  any of options.axes elements should be of 'unsigned long'`);
-            assert_throws_js(TypeError, () => builder[subOperationName](input, {axes: [axis]}));
+        for (let dimensions of allWebNNDimensionsArray) {
+          const rank = getRank(dimensions);
+          if (rank >= 1) {
+            const input =
+                builder.input(`input${++inputIndex}`, {dataType, dimensions});
+            for (let invalidAxis of invalidAxisArray) {
+              assert_equals(typeof builder[subOperationName], 'function');
+              assert_throws_js(
+                  TypeError,
+                  () => builder[subOperationName](input, {axes: invalidAxis}));
+            }
+            for (let axis of notUnsignedLongAxisArray) {
+              assert_false(
+                  typeof axis === 'number' && Number.isInteger(axis),
+                  `[${subOperationName}] any of options.axes elements should be of 'unsigned long'`);
+              assert_equals(typeof builder[subOperationName], 'function');
+              assert_throws_js(
+                  TypeError,
+                  () => builder[subOperationName](input, {axes: [axis]}));
+            }
           }
         }
       }
     }, `[${subOperationName}] TypeError is expected if any of options.axes elements is not an unsigned long interger`);
 
-    // DataError is expected if any of options.axes elements is greater or equal to the size of input
+    // TypeError is expected if any of options.axes elements is greater or equal
+    // to the size of input
     promise_test(async t => {
-      if (inputRank === undefined) {
-        // argMin/Max / layerNormalization / Reduction operations
-        for (let dataType of allWebNNOperandDataTypes) {
-          for (let dimensions of allWebNNDimensionsArray) {
-            const rank = getRank(dimensions);
-            if (rank >= 1) {
-              const input = builder.input(`input${++inputIndex}`, {dataType, dimensions});
-              assert_throws_dom('DataError', () => builder[subOperationName](input, {axes: [rank]}));
-              assert_throws_dom('DataError', () => builder[subOperationName](input, {axes: [rank + 1]}));
-            }
+      const builder = new MLGraphBuilder(context);
+      for (let dataType of allWebNNOperandDataTypes) {
+        if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+          assert_throws_js(
+              TypeError,
+              () => builder.input(
+                  `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+          continue;
+        }
+        for (let dimensions of allWebNNDimensionsArray) {
+          const rank = getRank(dimensions);
+          if (rank >= 1) {
+            const input =
+                builder.input(`input${++inputIndex}`, {dataType, dimensions});
+            assert_equals(typeof builder[subOperationName], 'function');
+            assert_throws_js(
+                TypeError,
+                () => builder[subOperationName](input, {axes: [rank]}));
+            assert_throws_js(
+                TypeError,
+                () => builder[subOperationName](input, {axes: [rank + 1]}));
           }
         }
-      } else {
-        // resample2d
-        for (let dataType of allWebNNOperandDataTypes) {
-          const input = builder.input(`input${++inputIndex}`, {dataType, dimensions: allWebNNDimensionsArray[inputRank]});
-          assert_throws_dom('DataError', () => builder[subOperationName](input, {axes: [inputRank]}));
-          assert_throws_dom('DataError', () => builder[subOperationName](input, {axes: [inputRank + 1]}));
-        }
       }
-    }, `[${subOperationName}] DataError is expected if any of options.axes elements is greater or equal to the size of input`);
+    }, `[${subOperationName}] TypeError is expected if any of options.axes elements is greater or equal to the size of input`);
 
-    // DataError is expected if two or more values are same in the axes sequence
+    // TypeError is expected if two or more values are same in the axes sequence
     promise_test(async t => {
-      if (inputRank === undefined) {
-        // argMin/Max / layerNormalization / Reduction operations
-        for (let dataType of allWebNNOperandDataTypes) {
-          for (let dimensions of allWebNNDimensionsArray) {
-            const rank = getRank(dimensions);
-            if (rank >= 2) {
-              const input = builder.input(`input${++inputIndex}`, {dataType, dimensions});
-              const axesArrayContainSameValues = getAxesArrayContainSameValues(dimensions);
-              for (let axes of axesArrayContainSameValues) {
-                assert_throws_dom('DataError', () => builder[subOperationName](input, {axes}));
-              }
+      const builder = new MLGraphBuilder(context);
+      for (let dataType of allWebNNOperandDataTypes) {
+        if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+          assert_throws_js(
+              TypeError,
+              () => builder.input(
+                  `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+          continue;
+        }
+        for (let dimensions of allWebNNDimensionsArray) {
+          const rank = getRank(dimensions);
+          if (rank >= 2) {
+            const input =
+                builder.input(`input${++inputIndex}`, {dataType, dimensions});
+            const axesArrayContainSameValues =
+                getAxesArrayContainSameValues(dimensions);
+            for (let axes of axesArrayContainSameValues) {
+              assert_equals(typeof builder[subOperationName], 'function');
+              assert_throws_js(
+                  TypeError, () => builder[subOperationName](input, {axes}));
             }
           }
         }
-      } else {
-        // resample2d
-        for (let dataType of allWebNNOperandDataTypes) {
-          const dimensions = allWebNNDimensionsArray[inputRank];
-          const input = builder.input(`input${++inputIndex}`, {dataType, dimensions});
-          const axesArrayContainSameValues = getAxesArrayContainSameValues(dimensions);
-          for (let axes of axesArrayContainSameValues) {
-            assert_throws_dom('DataError', () => builder[subOperationName](input, {axes}));
-          }
-        }
       }
-    }, `[${subOperationName}] DataError is expected if two or more values are same in the axes sequence`);
+    }, `[${subOperationName}] TypeError is expected if two or more values are same in the axes sequence`);
   }
+}
+
+// TODO: remove this method once all the data type limits of the unary
+// operations are specified in context.OpSupportLimits().
+/**
+ * Validate a unary operation
+ * @param {String} operationName - An operation name
+ * @param {Array} supportedDataTypes - Test building with these data types
+ *     succeeds and test building with all other data types fails
+ */
+function validateUnaryOperation(operationName, supportedDataTypes, label) {
+  promise_test(async t => {
+    const builder = new MLGraphBuilder(context);
+    for (let dataType of supportedDataTypes) {
+      if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+        assert_throws_js(
+            TypeError,
+            () => builder.input(
+                `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+        continue;
+      }
+      for (let dimensions of allWebNNDimensionsArray) {
+        const input = builder.input(`input`, {dataType, dimensions});
+        assert_equals(typeof builder[operationName], 'function');
+        const output = builder[operationName](input);
+        assert_equals(output.dataType(), dataType);
+        assert_array_equals(output.shape(), dimensions);
+      }
+    }
+  }, `[${operationName}] Test building an unary operator with supported type.`);
+
+  const unsupportedDataTypes =
+      new Set(allWebNNOperandDataTypes).difference(new Set(supportedDataTypes));
+  promise_test(async t => {
+    const builder = new MLGraphBuilder(context);
+    for (let dataType of unsupportedDataTypes) {
+      if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+        assert_throws_js(
+            TypeError,
+            () => builder.input(
+                `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+        continue;
+      }
+      for (let dimensions of allWebNNDimensionsArray) {
+        const input = builder.input(`input`, {dataType, dimensions});
+        assert_equals(typeof builder[operationName], 'function');
+        const options = {label};
+        const regrexp = new RegExp('\\[' + label + '\\]');
+        assert_throws_with_label(
+            () => builder[operationName](input, options), regrexp);
+      }
+    }
+  }, `[${operationName}] Throw if the dataType is not supported for an unary operator.`);
+}
+
+/**
+ * Validate a single input operation
+ * @param {String} operationName - An operation name
+ */
+function validateSingleInputOperation(operationName, label) {
+  promise_test(async t => {
+    const builder = new MLGraphBuilder(context);
+    const supportedDataTypes =
+        context.opSupportLimits()[operationName].input.dataTypes;
+    for (let dataType of supportedDataTypes) {
+      if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+        continue;
+      }
+      for (let dimensions of allWebNNDimensionsArray) {
+        const input = builder.input(`input`, {dataType, dimensions});
+        const output = builder[operationName](input);
+        assert_equals(output.dataType(), dataType);
+        assert_array_equals(output.shape(), dimensions);
+      }
+    }
+  }, `[${operationName}] Test building the operator with supported data type.`);
+
+  promise_test(async t => {
+    const builder = new MLGraphBuilder(context);
+    const unsupportedDataTypes =
+        new Set(allWebNNOperandDataTypes)
+            .difference(new Set(
+                context.opSupportLimits()[operationName].input.dataTypes));
+    for (let dataType of unsupportedDataTypes) {
+      if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+        assert_throws_js(
+            TypeError,
+            () => builder.input(
+                `inputA${++inputAIndex}`, {dataType, dimensions1D}));
+        continue;
+      }
+      for (let dimensions of allWebNNDimensionsArray) {
+        const input = builder.input(`input`, {dataType, dimensions});
+        assert_equals(typeof builder[operationName], 'function');
+        const options = {label};
+        const regrexp = new RegExp('\\[' + label + '\\]');
+        assert_throws_with_label(
+            () => builder[operationName](input, options), regrexp);
+      }
+    }
+  }, `[${operationName}] Throw if the data type is not supported for the operator.`);
+}
+
+/**
+ * Basic test that the builder method specified by `operationName` throws if
+ * given an input from another builder. Operands which do not accept a float32
+ * square 2D input should pass their own `operatorDescriptor`.
+ * @param {String} operationName
+ * @param {String} operatorDescriptor
+ */
+function validateInputFromAnotherBuilder(operatorName, operatorDescriptor = {
+  dataType: 'float32',
+  dimensions: [2, 2]
+}) {
+  multi_builder_test(async (t, builder, otherBuilder) => {
+    const inputFromOtherBuilder =
+        otherBuilder.input('input', operatorDescriptor);
+    assert_equals(typeof builder[operatorName], 'function');
+    assert_throws_js(
+        TypeError, () => builder[operatorName](inputFromOtherBuilder));
+  }, `[${operatorName}] throw if input is from another builder`);
+};
+
+/**
+ * Basic test that the builder method specified by `operationName` throws if one
+ * of its inputs is from another builder. This helper may only be used by
+ * operands which accept float32 square 2D inputs.
+ * @param {String} operationName
+ */
+function validateTwoInputsFromMultipleBuilders(operatorName) {
+  const opDescriptor = {dataType: 'float32', dimensions: [2, 2]};
+
+  multi_builder_test(async (t, builder, otherBuilder) => {
+    const inputFromOtherBuilder = otherBuilder.input('other', opDescriptor);
+
+    const input = builder.input('input', opDescriptor);
+    assert_equals(typeof builder[operatorName], 'function');
+    assert_throws_js(
+        TypeError, () => builder[operatorName](inputFromOtherBuilder, input));
+  }, `[${operatorName}] throw if first input is from another builder`);
+
+  multi_builder_test(async (t, builder, otherBuilder) => {
+    const inputFromOtherBuilder = otherBuilder.input('other', opDescriptor);
+
+    const input = builder.input('input', opDescriptor);
+    assert_equals(typeof builder[operatorName], 'function');
+    assert_throws_js(
+        TypeError, () => builder[operatorName](input, inputFromOtherBuilder));
+  }, `[${operatorName}] throw if second input is from another builder`);
+};
+
+function multi_builder_test(func, description) {
+  promise_test(async t => {
+    const context = await navigator.ml.createContext();
+
+    const builder = new MLGraphBuilder(context);
+    const otherBuilder = new MLGraphBuilder(context);
+
+    await func(t, builder, otherBuilder);
+  }, description);
 }

@@ -40,6 +40,10 @@ def any_int(actual: Any) -> None:
     assert isinstance(actual, int)
 
 
+def any_number(actual: Any) -> None:
+    assert isinstance(actual, int) or isinstance(actual, float)
+
+
 def any_int_or_null(actual: Any) -> None:
     if actual is not None:
         any_int(actual)
@@ -69,6 +73,15 @@ def int_interval(start: int, end: int) -> Callable[[Any], None]:
         assert start <= actual <= end
 
     return _
+
+
+def assert_cookies(cookies, expected_cookies):
+    assert len(cookies) == len(expected_cookies)
+
+    expected = sorted(expected_cookies, key=lambda cookie: cookie["name"])
+    actual = sorted(cookies, key=lambda cookie: cookie["name"])
+
+    recursive_compare(expected, actual)
 
 
 def assert_handle(obj: Mapping[str, Any], should_contain_handle: bool) -> None:
@@ -128,13 +141,21 @@ async def get_element_dimensions(bidi_session, context, element):
     return remote_mapping_to_dict(result["value"])
 
 
-async def get_viewport_dimensions(bidi_session, context: str):
-    expression = """
-        ({
-          height: window.innerHeight || document.documentElement.clientHeight,
-          width: window.innerWidth || document.documentElement.clientWidth,
-        });
-    """
+async def get_viewport_dimensions(bidi_session, context: str, with_scrollbar: bool = True):
+    if with_scrollbar == True:
+        expression = """
+            ({
+                height: window.innerHeight,
+                width: window.innerWidth,
+            });
+        """
+    else:
+        expression = """
+            ({
+                height: document.documentElement.clientHeight,
+                width: document.documentElement.clientWidth,
+            });
+        """
     result = await bidi_session.script.evaluate(
         expression=expression,
         target=ContextTarget(context["context"]),

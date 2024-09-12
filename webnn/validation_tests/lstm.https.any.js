@@ -1,25 +1,59 @@
 // META: title=validation tests for WebNN API lstm operation
 // META: global=window,dedicatedworker
+// META: variant=?cpu
+// META: variant=?gpu
+// META: variant=?npu
 // META: script=../resources/utils_validation.js
-// META: timeout=long
 
 'use strict';
 
 const steps = 10, batchSize = 5, inputSize = 3, hiddenSize = 8,
       numDirections = 1;
 
+// Dimensions required of required inputs.
+const kValidInputDimensions = [steps, batchSize, inputSize];
+const kValidWeightDimensions = [numDirections, 4 * hiddenSize, inputSize];
+const kValidRecurrentWeightDimensions =
+    [numDirections, 4 * hiddenSize, hiddenSize];
+// Dimensions required of optional inputs.
+const kValidBiasDimensions = [numDirections, 4 * hiddenSize];
+const kValidPeepholeWeightDimensions = [numDirections, 3 * hiddenSize];
+const kValidInitialHiddenStateDimensions =
+    [numDirections, batchSize, hiddenSize];
+
+// Example descriptors which are valid according to the above dimensions.
+const kExampleInputDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidInputDimensions
+};
+const kExampleWeightDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidWeightDimensions
+};
+const kExampleRecurrentWeightDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidRecurrentWeightDimensions
+};
+const kExampleBiasDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidBiasDimensions
+};
+const kExamplePeepholeWeightDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidPeepholeWeightDimensions
+};
+const kExampleInitialHiddenStateDescriptor = {
+  dataType: 'float32',
+  dimensions: kValidInitialHiddenStateDimensions
+};
+
 const tests = [
   {
     name: '[lstm] Test with default options',
-    input: {dataType: 'float16', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    input: {dataType: 'float16', dimensions: kValidInputDimensions},
+    weight: {dataType: 'float16', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'float16', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize,
     outputs: [
@@ -29,7 +63,7 @@ const tests = [
   },
   {
     name: '[lstm] Test with given options',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
+    input: kExampleInputDescriptor,
     weight: {
       dataType: 'float32',
       dimensions: [/*numDirections=*/ 2, 4 * hiddenSize, inputSize]
@@ -82,114 +116,72 @@ const tests = [
     ]
   },
   {
-    name: '[lstm] DataError is expected if hiddenSize equals to zero',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    name: '[lstm] TypeError is expected if hiddenSize equals to zero',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: 0
   },
   {
-    name: '[lstm] DataError is expected if hiddenSize is too large',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    name: '[lstm] TypeError is expected if hiddenSize is too large',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: 4294967295,
   },
   {
-    name: '[lstm] DataError is expected if steps equals to zero',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    name: '[lstm] TypeError is expected if steps equals to zero',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: 0,
     hiddenSize: hiddenSize,
   },
   {
     name:
-        '[lstm] DataError is expected if the data type is not one of the floating point types',
-    input: {dataType: 'uint32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'uint32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'uint32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the data type is not one of the floating point types',
+    input: {dataType: 'uint32', dimensions: kValidInputDimensions},
+    weight: {dataType: 'uint32', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'uint32', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize
   },
   {
-    name:
-        '[lstm] DataError is expected if the rank of input is not 3',
+    name: '[lstm] TypeError is expected if the rank of input is not 3',
     input: {dataType: 'float32', dimensions: [steps, batchSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: hiddenSize
   },
   {
     name:
-        '[lstm] DataError is expected if input.dimensions[0] is not equal to steps',
+        '[lstm] TypeError is expected if input.dimensions[0] is not equal to steps',
     input: {dataType: 'float32', dimensions: [1000, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: hiddenSize
   },
   {
-    name: '[lstm] DataError is expected if the shape of weight is incorrect',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
+    name: '[lstm] TypeError is expected if the shape of weight is incorrect',
+    input: kExampleInputDescriptor,
     weight: {
       dataType: 'float32',
       dimensions: [numDirections, 4 * hiddenSize, 1000]
     },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: hiddenSize
   },
   {
     name:
-        '[lstm] DataError is expected if the rank of recurrentWeight is not 3',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
+        '[lstm] TypeError is expected if the rank of recurrentWeight is not 3',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
     recurrentWeight:
         {dataType: 'float32', dimensions: [numDirections, 4 * hiddenSize]},
     steps: steps,
@@ -197,48 +189,31 @@ const tests = [
   },
   {
     name:
-        '[lstm] DataError is expected if the size of options.activations is not 3',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the size of options.activations is not 3',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: hiddenSize,
     options: {activations: ['sigmoid', 'tanh']}
   },
   {
-    name:
-        '[lstm] DataError is expected if the rank of options.bias is not 2',
-    input: {dataType: 'float16', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+    name: '[lstm] TypeError is expected if the rank of options.bias is not 2',
+    input: {dataType: 'float16', dimensions: kValidInputDimensions},
+    weight: {dataType: 'float16', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'float16', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize,
     options: {bias: {dataType: 'float16', dimensions: [numDirections]}}
   },
   {
     name:
-        '[lstm] DataError is expected if the shape of options.recurrentBias.dimensions is incorrect',
-    input: {dataType: 'float16', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the shape of options.recurrentBias.dimensions is incorrect',
+    input: {dataType: 'float16', dimensions: kValidInputDimensions},
+    weight: {dataType: 'float16', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'float16', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize,
     options: {
@@ -247,16 +222,11 @@ const tests = [
   },
   {
     name:
-        '[lstm] DataError is expected if the dataType of options.peepholeWeight is incorrect',
-    input: {dataType: 'float16', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the dataType of options.peepholeWeight is incorrect',
+    input: {dataType: 'float16', dimensions: kValidInputDimensions},
+    weight: {dataType: 'float16', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'float16', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize,
     options: {
@@ -266,16 +236,11 @@ const tests = [
   },
   {
     name:
-        '[lstm] DataError is expected if the dataType of options.initialHiddenState is incorrect',
-    input: {dataType: 'float16', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float16',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the dataType of options.initialHiddenState is incorrect',
+    input: {dataType: 'float16', dimensions: kValidInputDimensions},
+    weight: {dataType: 'float16', dimensions: kValidWeightDimensions},
+    recurrentWeight:
+        {dataType: 'float16', dimensions: kValidRecurrentWeightDimensions},
     steps: steps,
     hiddenSize: hiddenSize,
     options: {
@@ -287,16 +252,10 @@ const tests = [
   },
   {
     name:
-        '[lstm] DataError is expected if the shape of options.initialCellState is incorrect',
-    input: {dataType: 'float32', dimensions: [steps, batchSize, inputSize]},
-    weight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, inputSize]
-    },
-    recurrentWeight: {
-      dataType: 'float32',
-      dimensions: [numDirections, 4 * hiddenSize, hiddenSize]
-    },
+        '[lstm] TypeError is expected if the shape of options.initialCellState is incorrect',
+    input: kExampleInputDescriptor,
+    weight: kExampleWeightDescriptor,
+    recurrentWeight: kExampleRecurrentWeightDescriptor,
     steps: steps,
     hiddenSize: hiddenSize,
     options: {
@@ -308,6 +267,7 @@ const tests = [
 
 tests.forEach(
     test => promise_test(async t => {
+      const builder = new MLGraphBuilder(context);
       const input = builder.input(
           'input',
           {dataType: test.input.dataType, dimensions: test.input.dimensions});
@@ -328,7 +288,7 @@ tests.forEach(
           });
         }
         if (test.options.recurrentBias) {
-          options.bias = builder.input('recurrentBias', {
+          options.recurrentBias = builder.input('recurrentBias', {
             dataType: test.options.recurrentBias.dataType,
             dimensions: test.options.recurrentBias.dimensions
           });
@@ -361,13 +321,13 @@ tests.forEach(
           options.layout = test.options.layout;
         }
         if (test.options.activations) {
-          options.activations = [];
-          test.options.activations.forEach(
-              activation => options.activations.push(builder[activation]()));
+          options.activations = test.options.activations;
         }
       }
 
-      if (test.outputs) {
+      if (test.outputs &&
+          context.opSupportLimits().lstm.input.dataTypes.includes(
+              test.input.dataType)) {
         const outputs = builder.lstm(
             input, weight, recurrentWeight, test.steps, test.hiddenSize,
             options);
@@ -377,10 +337,127 @@ tests.forEach(
           assert_array_equals(outputs[i].shape(), test.outputs[i].dimensions);
         }
       } else {
-        assert_throws_dom(
-            'DataError',
+        const label = 'lstm_xxx';
+        options.label = label;
+        const regrexp = new RegExp('\\[' + label + '\\]');
+        assert_throws_with_label(
             () => builder.lstm(
                 input, weight, recurrentWeight, test.steps, test.hiddenSize,
-                options));
+                options),
+            regrexp);
       }
     }, test.name));
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const inputFromOtherBuilder =
+      otherBuilder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          inputFromOtherBuilder, weight, recurrentWeight, steps, hiddenSize));
+}, '[lstm] throw if input is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weightFromOtherBuilder =
+      otherBuilder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weightFromOtherBuilder, recurrentWeight, steps, hiddenSize));
+}, '[lstm] throw if weight is from another builder');
+
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeightFromOtherBuilder =
+      otherBuilder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeightFromOtherBuilder, steps, hiddenSize));
+}, '[lstm] throw if recurrentWeight is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const biasFromOtherBuilder =
+      otherBuilder.input('bias', kExampleBiasDescriptor);
+  const options = {bias: biasFromOtherBuilder};
+
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeight, steps, hiddenSize, options));
+}, '[lstm] throw if bias option is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const recurrentBiasFromOtherBuilder =
+      otherBuilder.input('bias', kExampleBiasDescriptor);
+  const options = {recurrentBias: recurrentBiasFromOtherBuilder};
+
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeight, steps, hiddenSize, options));
+}, '[lstm] throw if recurrentBias option is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const peepholeWeightFromOtherBuilder =
+      otherBuilder.input('peepholeWeight', kExamplePeepholeWeightDescriptor);
+  const options = {peepholeWeight: peepholeWeightFromOtherBuilder};
+
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeight, steps, hiddenSize, options));
+}, '[lstm] throw if peepholeWeight option is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const initialHiddenStateFromOtherBuilder = otherBuilder.input(
+      'initialHiddenState', kExampleInitialHiddenStateDescriptor);
+  const options = {initialHiddenState: initialHiddenStateFromOtherBuilder};
+
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeight, steps, hiddenSize, options));
+}, '[lstm] throw if initialHiddenState option is from another builder');
+
+multi_builder_test(async (t, builder, otherBuilder) => {
+  const initialCellStateFromOtherBuilder = otherBuilder.input(
+      'initialCellState', kExampleInitialHiddenStateDescriptor);
+  const options = {initialCellState: initialCellStateFromOtherBuilder};
+
+  const input = builder.input('input', kExampleInputDescriptor);
+  const weight = builder.input('weight', kExampleWeightDescriptor);
+  const recurrentWeight =
+      builder.input('recurrentWeight', kExampleRecurrentWeightDescriptor);
+  assert_throws_js(
+      TypeError,
+      () => builder.lstm(
+          input, weight, recurrentWeight, steps, hiddenSize, options));
+}, '[lstm] throw if initialCellState option is from another builder');
